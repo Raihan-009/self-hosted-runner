@@ -13,14 +13,4 @@ jobs:
 
       - name: Check Kubernetes Resources
         run: |
-          echo "Checking nodes..."
-          kubectl get nodes -o wide
-          
-          echo -e "\nChecking pods in all namespaces..."
-          kubectl get pods -A
-          
-          echo -e "\nChecking deployments in all namespaces..."
-          kubectl get deployments -A
-          
-          echo -e "\nChecking services in all namespaces..."
-          kubectl get svc -A
+          echo "From self hoster runner..."
