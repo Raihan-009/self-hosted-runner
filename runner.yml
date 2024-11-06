@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-runner
+  labels:
+    app: github-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-runner
+  template:
+    metadata:
+      labels:
+        app: github-runner
+    spec:
+      containers:
+      - name: github-runner
+        image: poridhi/custom-runner:v1.1
+        imagePullPolicy: Always
+        env:
+        - name: GITHUB_OWNER
+          valueFrom:
+            secretKeyRef:
+              name: github-secret
+              key: GITHUB_OWNER
+        - name: GITHUB_REPOSITORY
+          valueFrom:
+            secretKeyRef:
+              name: github-secret
+              key: GITHUB_REPOSITORY
+        - name: GITHUB_PERSONAL_TOKEN 
+          valueFrom:
+            secretKeyRef:
+              name: github-secret
+              key: GITHUB_PERSONAL_TOKEN
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+        resources:
+          requests:
+            ephemeral-storage: "1Gi"
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            ephemeral-storage: "2Gi"
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /work/
+      - name: dind 
+        image: docker:24.0.6-dind
+        env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+        resources: 
+          requests: 
+            cpu: "250m"
+            memory: "512Mi"
+            ephemeral-storage: "2Gi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+            ephemeral-storage: "10Gi"
+        securityContext: 
+          privileged: true 
+        volumeMounts: 
+          - name: docker-graph-storage 
+            mountPath: /var/lib/docker 
+          - name: data
+            mountPath: /work/
+      volumes:
+      - name: docker-graph-storage 
+        emptyDir: 
+          sizeLimit: "10Gi"
+      - name: data
+        emptyDir:
+          sizeLimit: "1Gi"

@@ -1,0 +1,27 @@
+name: Self-Hosted Runner Test
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Nginx image
+        run: |
+          docker build -f Dockerfile.nginx -t nginx-runner:1.0.0 .
+
+      - name: Test Nginx container
+        run: |
+          docker run -d -p 8080:80 --name test-nginx nginx-runner:1.0.0
+          # Wait for container to start
+          sleep 5
+          # Test if the container is running
+          docker ps | grep test-nginx
+          # Cleanup
+          docker stop test-nginx
+          docker rm test-nginx
