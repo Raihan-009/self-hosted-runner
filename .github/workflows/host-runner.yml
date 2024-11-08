@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  docker-build:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -14,3 +14,38 @@ jobs:
       - name: Check Kubernetes Resources
         run: |
           echo "From self hoster runner..."
+
+  k8s-info:
+    needs: docker-build  # This makes k8s-info wait for docker-build to succeed
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+    
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+      
+    - name: Get kubectl version
+      run: |
+        kubectl version
+        
+    - name: Get node information
+      run: |
+        echo "Getting node information..."
+        kubectl get nodes -o wide
+        
+        echo "Getting detailed node description..."
+        kubectl describe nodes
+        
+    - name: Get cluster info
+      run: |
+        echo "Getting cluster information..."
+        kubectl cluster-info
