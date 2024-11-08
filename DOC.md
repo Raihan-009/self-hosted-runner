@@ -26,7 +26,9 @@ touch Dockerfile entrypoint.sh kubernetes.yaml
 
 ## Step 2: Creating the Dockerfile
 
-The Dockerfile creates a container image that serves as our GitHub Actions runner environment. It creates a reproducible environment for the runner and installs necessary tools (Docker CLI, jq, etc.). It forms the base container image for the runner pod in Kubernetes
+The Dockerfile creates a container image that serves as our GitHub Actions runner environment. It creates a reproducible environment for the runner and installs necessary tools (Docker CLI, jq, etc.). It forms the base container image for the runner pod in Kubernetes.
+
+![docker-integration](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/docker-part.svg)
 
 1. Create the Dockerfile with the following content:
 ```dockerfile
@@ -83,6 +85,8 @@ ENTRYPOINT ["/actions-runner/entrypoint.sh"]
 
 The entrypoint script handles the runner's lifecycle - registration, execution, and cleanup. It automatically registers the runner with GitHub. It acts as the bridge between container and GitHub.
 
+![entrypoint](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/entrypoint.svg)
+
 1. Create entrypoint.sh with the following content:
 ```bash
 #!/bin/sh
@@ -119,6 +123,8 @@ chmod +x entrypoint.sh
 ## Step 4: Creating the Kubernetes Deployment
 
 This step defines how the runner should be deployed and managed in Kubernetes.
+
+![k8s-integration](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/k8s-part.svg)
 
 1. Create kubernetes.yaml with the following content:
 ```yaml
