@@ -5,47 +5,85 @@ on:
     branches:
       - main
 
+env:
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  DOCKER_IMAGE: nginx-app
+  NAMESPACE: dev
+  REPLICAS: "2"
+  NODE_PORT: "30080"
+
 jobs:
   docker-build:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Kubernetes Resources
-        run: |
-          echo "From self hoster runner..."
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-  k8s-info:
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.nginx
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+
+      - name: Print Build Info
+        run: |
+          echo "Successfully built and pushed image: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}"
+
+  k8s-deploy:
     needs: docker-build
     runs-on: self-hosted
-    
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
     
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-    
-    - name: Configure kubectl
-      uses: azure/k8s-set-context@v3
-      with:
-        method: kubeconfig
-        kubeconfig: ${{ secrets.KUBE_CONFIG }}
-      
-    - name: Get kubectl version
-      run: |
-        kubectl version
-        
-    - name: Get node information
-      run: |
-        echo "Getting node information..."
-        kubectl get nodes -o wide
-        
-        echo "Getting detailed node description..."
-        kubectl describe nodes
-        
-    - name: Get cluster info
-      run: |
-        echo "Getting cluster information..."
-        kubectl cluster-info
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Update Kubernetes Manifests
+        run: |
+          echo "Updating Kubernetes manifests with deployment variables..."
+          for file in nginx-deployment/*.yml; do
+            sed -i "s|\${DOCKER_REGISTRY}|$DOCKER_REGISTRY|g" $file
+            sed -i "s|\${DOCKER_IMAGE}|$DOCKER_IMAGE|g" $file
+            sed -i "s|\${IMAGE_TAG}|${{ github.sha }}|g" $file
+            sed -i "s|\${NAMESPACE}|$NAMESPACE|g" $file
+            sed -i "s|\${REPLICAS}|$REPLICAS|g" $file
+            sed -i "s|\${NODE_PORT}|$NODE_PORT|g" $file
+          done
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "Creating/Updating namespace..."
+          kubectl apply -f nginx-deployment/namespace.yml
+
+          echo "Deploying application..."
+          kubectl apply -f nginx-deployment/deployment.yml
+          kubectl apply -f nginx-deployment/service.yml
+
+          echo "Waiting for deployment to be ready..."
+          kubectl rollout status deployment/nginx-deployment -n $NAMESPACE
+
+      - name: Verify Deployment
+        run: |
+          echo "Verifying deployment status..."
+          kubectl get deployment nginx-deployment -n $NAMESPACE
+          kubectl get service nginx-service -n $NAMESPACE
+          echo "Deployment completed successfully!"
