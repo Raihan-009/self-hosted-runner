@@ -7,10 +7,6 @@ push:
 pull:
 	docker pull poridhi/custom-runner:v1.1
 
-image:
-	docker save my-runner:latest -o my-runner.tar
-	sudo k3s ctr images import my-runner.tar
-
 namespace:
 	kubectl create ns host-runner
 

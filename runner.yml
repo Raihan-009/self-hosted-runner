@@ -38,15 +38,15 @@ spec:
           value: tcp://localhost:2375
         resources:
           requests:
-            ephemeral-storage: "1Gi"
+            ephemeral-storage: "2Gi"
             memory: "512Mi"
             cpu: "250m"
           limits:
-            ephemeral-storage: "2Gi"
+            ephemeral-storage: "4Gi"
             memory: "1Gi"
             cpu: "500m"
         volumeMounts:
-        - name: data
+        - name: workspace
           mountPath: /work/
       - name: dind 
         image: docker:24.0.6-dind
@@ -57,22 +57,22 @@ spec:
           requests: 
             cpu: "250m"
             memory: "512Mi"
-            ephemeral-storage: "2Gi"
+            ephemeral-storage: "4Gi"
           limits:
             cpu: "500m"
             memory: "2Gi"
-            ephemeral-storage: "10Gi"
+            ephemeral-storage: "15Gi"
         securityContext: 
           privileged: true 
         volumeMounts: 
           - name: docker-graph-storage 
             mountPath: /var/lib/docker 
-          - name: data
+          - name: workspace
             mountPath: /work/
       volumes:
       - name: docker-graph-storage 
         emptyDir: 
-          sizeLimit: "10Gi"
-      - name: data
+          sizeLimit: "15Gi"
+      - name: workspace
         emptyDir:
-          sizeLimit: "1Gi"
+          sizeLimit: "4Gi"
