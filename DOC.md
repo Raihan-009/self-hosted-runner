@@ -28,8 +28,6 @@ touch Dockerfile entrypoint.sh kubernetes.yaml
 
 The Dockerfile creates a container image that serves as our GitHub Actions runner environment. It creates a reproducible environment for the runner and installs necessary tools (Docker CLI, jq, etc.). It forms the base container image for the runner pod in Kubernetes.
 
-![docker-integration](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/docker-part.svg)
-
 1. Create the Dockerfile with the following content:
 ```dockerfile
 FROM debian:bookworm-slim
@@ -83,9 +81,7 @@ ENTRYPOINT ["/actions-runner/entrypoint.sh"]
 
 ## Step 3: Creating the Entrypoint Script
 
-The entrypoint script handles the runner's lifecycle - registration, execution, and cleanup. It automatically registers the runner with GitHub. It acts as the bridge between container and GitHub.
-
-![entrypoint](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/entrypoint.svg)
+The entrypoint script handles the runner's lifecycle - registration, execution, and cleanup. It automatically registers the runner with GitHub.
 
 1. Create entrypoint.sh with the following content:
 ```bash
@@ -121,10 +117,6 @@ chmod +x entrypoint.sh
 ```
 
 ## Step 4: Creating the Kubernetes Deployment
-
-This step defines how the runner should be deployed and managed in Kubernetes.
-
-![k8s-integration](https://raw.githubusercontent.com/Raihan-009/self-hosted-runner/e168604bc42a004c2471ae85442022ed6e0c6a0d/k8s-part.svg)
 
 1. Create kubernetes.yaml with the following content:
 ```yaml
@@ -249,11 +241,160 @@ kubectl -n host-runner get pods
 kubectl -n host-runner logs -f <pod-name> -c github-runner
 ```
 
-## Step 9: Verifying the Setup
+## Step 9: Testing the Runner with Nginx Deployment
 
-1. Go to your GitHub repository
-2. Navigate to Settings → Actions → Runners
-3. You should see your self-hosted runner listed and "Idle"
+1. Create the necessary deployment files structure:
+```bash
+mkdir -p nginx-deployment
+cd nginx-deployment
+```
+
+2. Create three Kubernetes manifest files:
+
+File: `nginx-deployment/namespace.yml`
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+```
+
+File: `nginx-deployment/deployment.yml`
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: ${NAMESPACE}
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${IMAGE_TAG}
+        ports:
+        - containerPort: 80
+```
+
+File: `nginx-deployment/service.yml`
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: ${NAMESPACE}
+spec:
+  type: NodePort
+  selector:
+    app: nginx
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: ${NODE_PORT}
+```
+
+3. Create the GitHub Actions workflow file:
+
+File: `.github/workflows/deploy.yml`
+```yaml
+name: Self-Hosted Runner Test v2
+on:
+  push:
+    branches:
+      - main
+env:
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  DOCKER_IMAGE: nginx-app
+  NAMESPACE: dev
+  REPLICAS: "2"
+  NODE_PORT: "30080"
+jobs:
+  docker-build:
+    runs-on: self-hosted
+    steps:
+      - name: repository checkout 
+        uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.nginx
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+  k8s-deploy:
+    needs: docker-build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+    
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+      - name: Update Kubernetes Manifests
+        run: |
+          for file in nginx-deployment/*.yml; do
+            sed -i "s|\${DOCKER_REGISTRY}|$DOCKER_REGISTRY|g" $file
+            sed -i "s|\${DOCKER_IMAGE}|$DOCKER_IMAGE|g" $file
+            sed -i "s|\${IMAGE_TAG}|${{ github.sha }}|g" $file
+            sed -i "s|\${NAMESPACE}|$NAMESPACE|g" $file
+            sed -i "s|\${REPLICAS}|$REPLICAS|g" $file
+            sed -i "s|\${NODE_PORT}|$NODE_PORT|g" $file
+          done
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f nginx-deployment/namespace.yml
+          kubectl apply -f nginx-deployment/deployment.yml
+          kubectl apply -f nginx-deployment/service.yml
+```
+
+4. Add required secrets to your GitHub repository:
+   - `DOCKER_REGISTRY`: Your Docker registry (e.g., your Docker Hub username)
+   - `DOCKER_USERNAME`: Your Docker Hub username
+   - `DOCKER_PASSWORD`: Your Docker Hub password
+   - `KUBE_CONFIG`: Your Kubernetes configuration file content (base64 encoded)
+
+5. Create a simple Nginx Dockerfile:
+
+File: `Dockerfile.nginx`
+```dockerfile
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/
+```
+
+6. Create a test index.html:
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Hello from self-hosted runner!</h1>
+</body>
+</html>
+```
+
+7. Commit and push these files to your repository
+8. Check the Actions tab in your repository to see the workflow running
+9. Once completed, you can access the deployed application at `http://your-node-ip:30080`
 
 ## Troubleshooting Guide
 
@@ -303,50 +444,3 @@ kubectl delete namespace host-runner
 # Remove local images
 docker rmi github-runner:latest
 ```
-
-## Testing the Runner
-
-1. Create a simple workflow in your repository:
-
-```yaml
-# .github/workflows/test.yml
-name: Test Self-Hosted Runner
-on: [push]
-jobs:
-  test:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v2
-      - name: Test Runner
-        run: |
-          echo "Hello from self-hosted runner!"
-          docker --version
-```
-
-2. Commit and push this file to your repository
-3. Check the Actions tab in your repository to see the workflow running
-
-## Maintenance Tips
-
-1. **Updating Runner Version**:
-   - Update RUNNER_VERSION in Dockerfile
-   - Rebuild and redeploy
-
-2. **Scaling Runners**:
-   - Modify replicas in kubernetes.yaml
-   - Apply changes with kubectl
-
-3. **Monitoring**:
-```bash
-# Check runner status
-kubectl -n host-runner get pods -w
-
-# Check resource usage
-kubectl -n host-runner top pod
-```
-
-Remember to:
-- Regularly update the runner version
-- Monitor resource usage
-- Rotate GitHub tokens periodically
-- Keep Docker images updated
