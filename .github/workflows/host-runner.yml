@@ -1,4 +1,4 @@
-name: Self-Hosted Runner Test
+name: Self-Hosted Runner Test v2
 
 on:
   push:
